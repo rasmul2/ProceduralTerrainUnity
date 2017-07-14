@@ -43,6 +43,7 @@ public class LoadGridProcedurally : MonoBehaviour {
 
 	private bool loaded = false;
 	private bool first =  true;
+	private bool startedcoroutine = false;
 	// Use this for initialization
 	void Start () {
 		startTime = Time.time;
@@ -90,8 +91,8 @@ public class LoadGridProcedurally : MonoBehaviour {
 	void Update () {
 		if (loaded == true) {
 			GetFiles ();
-			lerpPosition (startposition, currentposition);
 		}
+			
 
 
 	}
@@ -108,7 +109,7 @@ public class LoadGridProcedurally : MonoBehaviour {
 	void GetFiles(){
 		DirectoryInfo directory = new DirectoryInfo (imagesfolder);
 		FileInfo[] imagefiles = directory.GetFiles ();
-		if (total >= imagefiles.Length) {
+		if (total >= imagefiles.Length || imagefiles.Length == 0) {
 			return;
 		} else {
 			if (imagefiles [total].Extension == ".png") {
@@ -157,8 +158,16 @@ public class LoadGridProcedurally : MonoBehaviour {
 
 	
 		SwapHighRes (x+beginposx, y+beginposy, prevposition);
-		prevposition = currentposition;
-		currentposition = new Vector3 (x + beginposx, player.transform.position.y, y + beginposy);
+		if (first == true) {
+			currentposition = new Vector3 (x + beginposy, y + beginposy);
+			first = false;
+		} else {
+			prevposition = currentposition;
+			currentposition = new Vector3 (x + beginposx, player.transform.position.y, y + beginposy);
+			startTime = Time.time;
+			StartCoroutine (movelerp (false));
+			StartCoroutine (movelerp (true));
+		}
 	}
 
 	void LoadTerrainChunk(Texture2D loadedimage, int xloc, int yloc){
@@ -175,7 +184,7 @@ public class LoadGridProcedurally : MonoBehaviour {
 	private void LoadHeightmap( Texture2D texture, TerrainData data)
 	{
 		texture = TextureScaler.scaled (texture, data.heightmapResolution-1, data.heightmapResolution-1, FilterMode.Trilinear);
-		Debug.Log (texture.height);
+		//Debug.Log (texture.height);
 			Color[] colors = texture.GetPixels ();
 			float[,] m_heightValues = new float[texture.width, texture.height];
 			//Debug.Log ("The length of the heightmap is: " + colors.Length); 
@@ -295,15 +304,38 @@ public class LoadGridProcedurally : MonoBehaviour {
 		}
 	}
 
-	void lerpPosition(Vector3 previousposition, Vector3 currentposition){
-		Debug.Log ("The x and y change positions are: " + currentposition.x + ' ' + currentposition.z);
-		float distancecovered = (Time.time - startTime) * speed;
-		Vector3 adjustforchunkprev = new Vector3 (currentposition.x*chunksize, player.transform.position.y, currentposition.z*chunksize);
-		Vector3 adjustforchunkcurrent = new Vector3 (currentposition.x*chunksize+chunksize, player.transform.position.y, currentposition.z*chunksize+chunksize);
-		float journeylength = Vector3.Distance (adjustforchunkprev, adjustforchunkcurrent);
-		float fractionaljourney = distancecovered / journeylength;
+	/*----------------------------------These are made to handle the movement on a seperate thread-------------------------------------*/
 
-		player.transform.position = Vector3.Lerp (adjustforchunkprev, adjustforchunkcurrent, fractionaljourney);
+	IEnumerator lerpPosition(Vector3 previousp, Vector3 currentp){
+		bool notthere = true;
+		while (notthere) {
+			Debug.Log ("The x and y change positions are: " + currentp.x + ' ' + currentp.z);
+			Debug.Log ("The previous x and y position are: " + previousp.x + ' ' + previousp.z);
+			float distancecovered = (Time.time - startTime) * speed;
+			Vector3 adjustforchunkprev = new Vector3 (previousp.x * chunksize, player.transform.position.y, previousp.z * chunksize);
+			Vector3 adjustforchunkcurrent = new Vector3 (currentp.x * chunksize, player.transform.position.y, currentp.z * chunksize);
+			float journeylength = Vector3.Distance (adjustforchunkprev, adjustforchunkcurrent);
+			float fractionaljourney = distancecovered / journeylength;
+
+			player.transform.position = Vector3.Lerp (adjustforchunkprev, adjustforchunkcurrent, fractionaljourney);
+			if (fractionaljourney == 1) {
+				notthere = false;
+
+			}
+			yield return null;
+		}
+	}
+
+	IEnumerator movelerp(bool strtorstp){
+		if (strtorstp == true) {
+			Debug.Log ("Started");
+			StartCoroutine (lerpPosition (prevposition, currentposition));
+			yield return null;
+		} else {
+			Debug.Log ("Stopped");
+			StopAllCoroutines ();
+			yield return null;
+		}
 
 	}
 
